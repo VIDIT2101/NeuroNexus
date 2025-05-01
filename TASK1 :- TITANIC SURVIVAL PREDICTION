@@ -1,0 +1,154 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def load_and_preprocess_data():
+    """Load and preprocess the Titanic dataset"""
+    # Load the data
+    df = pd.read_csv('tested.csv')
+    
+    # Print basic info
+    print("\n=== Dataset Information ===")
+    print(f"Shape: {df.shape}")
+    print("\nData Types:")
+    print(df.dtypes)
+    print("\nMissing Values:")
+    print(df.isnull().sum())
+    
+    # Handle missing values
+    df = df.assign(
+        Age=df['Age'].fillna(df['Age'].median()),
+        Fare=df['Fare'].fillna(df['Fare'].median()),
+        Embarked=df['Embarked'].fillna(df['Embarked'].mode()[0])
+    )
+    
+    return df
+
+def feature_engineering(df):
+    """Perform feature engineering"""
+    # Feature selection
+    features = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare', 'Embarked']
+    target = 'Survived'
+    
+    # Convert categorical variables
+    label_encoders = {}
+    for column in ['Sex', 'Embarked']:
+        le = LabelEncoder()
+        df = df.assign(**{column: le.fit_transform(df[column])})
+        label_encoders[column] = le
+    
+    return df, features, target, label_encoders
+
+def train_model(X_train, y_train):
+    """Train the Random Forest model"""
+    model = RandomForestClassifier(
+        n_estimators=100,
+        random_state=42,
+        max_depth=5,
+        min_samples_split=5
+    )
+    model.fit(X_train, y_train)
+    return model
+
+def evaluate_model(model, X_test, y_test):
+    """Evaluate model performance"""
+    y_pred = model.predict(X_test)
+    
+    print("\n=== Model Evaluation ===")
+    print(f"Accuracy: {accuracy_score(y_test, y_pred):.2f}")
+    
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred))
+    
+    print("\nConfusion Matrix:")
+    cm = confusion_matrix(y_test, y_pred)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Confusion Matrix')
+    plt.show()
+    
+    # Feature importance
+    importances = model.feature_importances_
+    feature_importance = pd.DataFrame({
+        'Feature': X_test.columns,
+        'Importance': importances
+    }).sort_values('Importance', ascending=False)
+    
+    print("\nFeature Importance:")
+    print(feature_importance)
+    
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='Importance', y='Feature', data=feature_importance)
+    plt.title('Feature Importance')
+    plt.show()
+
+def predict_survival(model, label_encoders):
+    """Make predictions on new data"""
+    print("\n=== Survival Prediction ===")
+    
+    # Example passenger data
+    passenger_data = {
+        'Pclass': 1,
+        'Sex': 'female',
+        'Age': 28,
+        'SibSp': 0,
+        'Parch': 0,
+        'Fare': 100,
+        'Embarked': 'S'
+    }
+    
+    # Create DataFrame
+    passenger_df = pd.DataFrame([passenger_data])
+    
+    # Encode categorical variables
+    for col in ['Sex', 'Embarked']:
+        passenger_df[col] = label_encoders[col].transform(passenger_df[col])
+    
+    # Make prediction
+    prediction = model.predict(passenger_df)
+    probability = model.predict_proba(passenger_df)
+    
+    result = {
+        'Passenger Details': passenger_data,
+        'Prediction': 'Survived' if prediction[0] else 'Did not survive',
+        'Survival Probability': f"{probability[0][1]*100:.1f}%",
+        'Death Probability': f"{probability[0][0]*100:.1f}%"
+    }
+    
+    print("\nExample Prediction:")
+    for key, value in result.items():
+        print(f"{key}: {value}")
+
+def main():
+    """Main execution function"""
+    # Load and preprocess data
+    df = load_and_preprocess_data()
+    
+    # Feature engineering
+    df, features, target, label_encoders = feature_engineering(df)
+    
+    # Prepare data
+    X = df[features]
+    y = df[target]
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    # Train model
+    model = train_model(X_train, y_train)
+    
+    # Evaluate model
+    evaluate_model(model, X_test, y_test)
+    
+    # Make predictions
+    predict_survival(model, label_encoders)
+
+if __name__ == "__main__":
+    main()
